@@ -1,0 +1,20 @@
+correction/
+    ├── data/                      # 数据目录
+    │   ├── raw/                   # 原始数据
+    │   │   ├── 水位_东山.csv
+    │   │   ├── 雨量_东山.csv
+    │   │   └── 东山_result.csv
+    │   └── processed/             # 处理后的数据
+    ├── models/                    # 模型相关
+    │   ├── stgcn.py              # STGCN模型定义
+    │   └── layers.py             # 自定义层
+    ├── utils/                     # 工具函数
+    │   ├── data_processor.py      # 数据预处理
+    │   ├── graph_builder.py       # 图构建
+    │   └── metrics.py            # 评估指标
+    ├── optimization/              # 优化算法
+    │   ├── pso_gwo.py            # PSO-GWO混合优化
+    │   └── optimizer.py          # 优化器接口
+    ├── config.py                 # 配置文件
+    ├── train.py                  # 训练脚本
+    └── predict.py                # 预测脚本 
