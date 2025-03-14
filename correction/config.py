@@ -24,14 +24,11 @@ class Config:
     DEVICE = "cuda"  # 或 "cpu"
     
     # PSO-GWO参数
-    POPULATION_SIZE = 10     # 减小种群大小
-    MAX_ITERATIONS = 30      # 减少迭代次数
+    POPULATION_SIZE = 30
+    MAX_ITERATIONS = 100
     LAMBDA = 0.6         # 调节系数
     ALPHA = 0.5         # 权重因子
     BETA = 0.5          # 权重因子
-    
-    # 添加评估参数
-    EVAL_EPOCHS = 3         # 减少评估时的训练轮数
     
     # 模型保存
     MODEL_SAVE_PATH = str(PROJECT_ROOT / "correction" / "models" / "saved")

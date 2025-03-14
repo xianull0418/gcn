@@ -38,7 +38,7 @@ class PSOGWO:
         
         return (X1 + X2 + X3) / 3
     
-    def optimize(self, dim, bounds, callback=None):
+    def optimize(self, dim, bounds):
         """执行PSO-GWO混合优化"""
         print(f"开始优化 {dim} 个参数")
         print(f"参数范围: \n{bounds}")
@@ -101,9 +101,6 @@ class PSOGWO:
             alpha_pos = population[sorted_idx[0]].copy()
             beta_pos = population[sorted_idx[1]].copy()
             delta_pos = population[sorted_idx[2]].copy()
-            
-            if callback:
-                callback(alpha_pos, fitness[sorted_idx[0]])
             
             print(f"当前最优适应度: {fitness[sorted_idx[0]]:.6f}")
             print(f"当前最优解: {alpha_pos}")

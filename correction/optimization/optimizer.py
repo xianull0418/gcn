@@ -19,43 +19,63 @@ class ModelOptimizer:
             [0.0, 0.5],    # dropout_rate
         ])
         
-        self.best_model = None
-        self.eval_interval = 10  # 每10次迭代评估一次
-        
     def fitness_function(self, params):
         """评估一组超参数的适应度"""
+        print(f"\n正在评估参数: {params}")
+        
         try:
             # 更新模型超参数
             self.config.HIDDEN_CHANNELS = int(params[0])
             self.config.LEARNING_RATE = params[1]
             self.config.NUM_LAYERS = int(params[2])
             
+            print(f"Hidden channels: {self.config.HIDDEN_CHANNELS}")
+            print(f"Learning rate: {self.config.LEARNING_RATE}")
+            print(f"Num layers: {self.config.NUM_LAYERS}")
+            
             # 重新初始化模型
             model = STGCN(self.config).to(self.config.DEVICE)
-            model.output_proj[-2].p = params[3]
+            model.output_proj[-2].p = params[3]  # 更新dropout率
+            print(f"Dropout rate: {params[3]}")
             
             # 训练模型
             optimizer = torch.optim.Adam(model.parameters(), lr=self.config.LEARNING_RATE)
             criterion = torch.nn.MSELoss()
             
-            # 简化训练过程
+            # 简单训练几个epoch来评估参数效果
             model.train()
-            for epoch in range(self.config.EVAL_EPOCHS):
+            train_losses = []
+            for epoch in range(5):
+                epoch_loss = 0
+                batch_count = 0
+                
                 for batch_features, batch_adj, batch_labels in self.train_data:
-                    batch_features = batch_features.to(self.config.DEVICE)
-                    batch_adj = batch_adj.to(self.config.DEVICE)
-                    batch_labels = batch_labels.to(self.config.DEVICE)
-                    
-                    optimizer.zero_grad()
-                    output = model(batch_features, batch_adj)
-                    loss = criterion(output, batch_labels)
-                    loss.backward()
-                    optimizer.step()
+                    try:
+                        batch_features = batch_features.to(self.config.DEVICE)
+                        batch_adj = batch_adj.to(self.config.DEVICE)
+                        batch_labels = batch_labels.to(self.config.DEVICE)
+                        
+                        optimizer.zero_grad()
+                        output = model(batch_features, batch_adj)
+                        loss = criterion(output, batch_labels)
+                        loss.backward()
+                        optimizer.step()
+                        
+                        epoch_loss += loss.item()
+                        batch_count += 1
+                        
+                    except Exception as e:
+                        print(f"批次处理错误: {str(e)}")
+                        print(f"Batch shapes - features: {batch_features.shape}, adj: {batch_adj.shape}, labels: {batch_labels.shape}")
+                        raise e
+                
+                avg_epoch_loss = epoch_loss / batch_count
+                train_losses.append(avg_epoch_loss)
+                print(f"Epoch {epoch+1}/5 - Loss: {avg_epoch_loss:.6f}")
             
-            # 快速评估
+            # 在验证集上评估
             model.eval()
-            val_loss = 0
-            n_batches = 0
+            val_losses = []
             with torch.no_grad():
                 for batch_features, batch_adj, batch_labels in self.val_data:
                     batch_features = batch_features.to(self.config.DEVICE)
@@ -63,86 +83,24 @@ class ModelOptimizer:
                     batch_labels = batch_labels.to(self.config.DEVICE)
                     
                     output = model(batch_features, batch_adj)
-                    val_loss += criterion(output, batch_labels).item()
-                    n_batches += 1
-                    
-                    # 只评估部分验证集
-                    if n_batches >= 5:
-                        break
+                    val_loss = criterion(output, batch_labels)
+                    val_losses.append(val_loss.item())
             
-            return val_loss / n_batches
+            mean_val_loss = np.mean(val_losses)
+            print(f"验证集损失: {mean_val_loss:.6f}")
+            return mean_val_loss
             
         except Exception as e:
             print(f"参数评估出错: {str(e)}")
+            # 返回一个较大的损失值
             return 1e6
-    
-    def evaluate_correction(self, model):
-        """评估校正效果"""
-        model.eval()
-        original_errors = []
-        corrected_errors = []
-        
-        with torch.no_grad():
-            for batch_features, batch_adj, batch_labels in self.val_data:
-                batch_features = batch_features.to(self.config.DEVICE)
-                batch_adj = batch_adj.to(self.config.DEVICE)
-                batch_labels = batch_labels.to(self.config.DEVICE)
-                
-                # 获取校正值
-                corrections = model(batch_features, batch_adj)
-                
-                # 收集原始误差和校正后的误差
-                original_errors.append(batch_labels.cpu().numpy())
-                corrected_errors.append((batch_labels - corrections).cpu().numpy())
-        
-        # 转换为numpy数组
-        original_errors = np.concatenate(original_errors, axis=0)
-        corrected_errors = np.concatenate(corrected_errors, axis=0)
-        
-        # 计算每个模型的RMSE改善程度
-        improvements = {}
-        model_names = ['DoubleEncoderTransformer', 'Transformer', 'LSTM', 'GRU', 'CNN']
-        
-        for i, name in enumerate(model_names):
-            original_rmse = np.sqrt(np.mean(original_errors[:, i] ** 2))
-            corrected_rmse = np.sqrt(np.mean(corrected_errors[:, i] ** 2))
-            improvement = (original_rmse - corrected_rmse) / original_rmse * 100
-            improvements[name] = improvement
-        
-        return improvements
     
     def optimize(self):
         """执行超参数优化"""
         optimizer = PSOGWO(self.config, self.fitness_function)
-        iteration_count = 0
-        
-        def callback(best_solution, best_fitness):
-            nonlocal iteration_count
-            iteration_count += 1
-            
-            if iteration_count % self.eval_interval == 0:
-                # 使用当前最佳参数创建模型
-                model = STGCN(self.config).to(self.config.DEVICE)
-                model.output_proj[-2].p = best_solution[3]
-                
-                # 评估校正效果
-                improvements = self.evaluate_correction(model)
-                
-                print("\n" + "="*50)
-                print(f"迭代 {iteration_count} 的校正效果:")
-                for model_name, improvement in improvements.items():
-                    print(f"{model_name}: 提升 {improvement:.2f}%")
-                print("="*50 + "\n")
-                
-                # 保存最佳模型
-                if self.best_model is None or best_fitness < self.best_fitness:
-                    self.best_model = model.state_dict()
-                    self.best_fitness = best_fitness
-        
         best_params, best_fitness = optimizer.optimize(
             dim=len(self.param_bounds),
-            bounds=self.param_bounds,
-            callback=callback
+            bounds=self.param_bounds
         )
         
         # 更新最佳超参数
@@ -150,9 +108,5 @@ class ModelOptimizer:
         self.config.LEARNING_RATE = best_params[1]
         self.config.NUM_LAYERS = int(best_params[2])
         self.model.output_proj[-2].p = best_params[3]
-        
-        # 加载最佳模型
-        if self.best_model is not None:
-            self.model.load_state_dict(self.best_model)
         
         return best_params, best_fitness 
